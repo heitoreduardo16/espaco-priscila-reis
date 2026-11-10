@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Espaço Priscila Reis | Agendamento</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#ede0cc;--card:#faf5ec;--ink:#2d1b33;--muted:#6b5a62;--accent:#8c3f6e;--accent-ink:#fff;--line:#d8c7ad;--ok:#2e7d5b;--bad:#b3362f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Figtree,system-ui,sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:32px 20px 64px}
+h1{font:400 clamp(2rem,6vw,3rem)/1.1 "DM Serif Display",Georgia,serif;margin:0 0 8px}
+h2{font:400 1.5rem "DM Serif Display",Georgia,serif;margin:0 0 16px}
+p.lead{color:var(--muted);margin:0 0 28px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:20px}
+label,.lbl{display:block;font-weight:600;margin:16px 0 6px}
+label:first-child,.lbl:first-child{margin-top:0}
+input,select{width:100%;padding:12px;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+.slot{padding:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:8px;font:inherit;cursor:pointer}
+.slot[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.slot:disabled{opacity:.4;text-decoration:line-through;cursor:not-allowed}
+.btn{display:inline-block;padding:13px 22px;border:0;border-radius:8px;background:var(--accent);color:var(--accent-ink);font:600 1rem Figtree,sans-serif;cursor:pointer;text-decoration:none}
+.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.sm{padding:7px 12px;font-size:.875rem}
+.msg{margin-top:14px;font-weight:500}.msg.err{color:var(--bad)}.msg.ok{color:var(--ok)}
+.hint{color:var(--muted);font-size:.9rem;margin:6px 0 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.item{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 0;border-top:1px solid var(--line)}
+.item:first-child{border-top:0}
+.item small{color:var(--muted);display:block}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Espaço Priscila Reis</h1>
+  <p class="lead">Escolha o serviço, o dia e o horário. Depois é só enviar o pedido pelo WhatsApp para confirmar.</p>
+
+  <main id="cliente">
+    <form id="form" class="card" novalidate>
+      <h2>Agendar horário</h2>
+      <label for="servico">Serviço</label>
+      <select id="servico" required></select>
+
+      <label for="data">Data</label>
+      <input type="date" id="data" required>
+      <p class="hint" id="dataHint"></p>
+
+      <div class="lbl">Horário</div>
+      <div class="slots" id="slots" role="group" aria-label="Horários disponíveis"></div>
+
+      <label for="nome">Seu nome</label>
+      <input id="nome" autocomplete="name" required>
+
+      <label for="tel">Telefone (WhatsApp)</label>
+      <input id="tel" type="tel" autocomplete="tel" inputmode="tel" placeholder="(11) 99999-9999" required>
+
+      <p style="margin-top:22px"><button class="btn" type="submit">Confirmar agendamento</button></p>
+      <p class="msg" id="msg" role="status"></p>
+      <p id="zap" hidden><a class="btn alt" id="zapLink" target="_blank" rel="noopener">Enviar pedido pelo WhatsApp</a></p>
+    </form>
+  </main>
+
+  <section id="admin" hidden>
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">Agendamentos</h2>
+        <button class="btn alt sm" id="sair">Sair</button>
+      </div>
+      <div id="lista"></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+// ===== CONFIGURAÇÕES: edite aqui =====
+const CONFIG = {
+  whatsapp: "5511961805398", // número da Priscila com 55 + DDD, só números
+  // Senha da área da Priscila, guardada como hash SHA-256 (não aparece em texto).
+  // O hash abaixo corresponde à senha 1234. Veja como gerar o seu no README.
+  pinHash: "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+  servicos: [
+    { nome: "Massagem relaxante", preco: 120 },
+    { nome: "Massagem modeladora", preco: 130 },
+    { nome: "Drenagem linfática", preco: 140 },
+    { nome: "Limpeza de pele", preco: 120 }
+  ],
+  // horários por dia da semana (0 = domingo ... 6 = sábado); vazio = fechado
+  horarios: {
+    0: [],
+    1: ["09:00","10:00","11:00","13:00","14:00","15:00","16:00","17:00"],
+    2: ["09:00","10:00","11:00","13:00","14:00","15:00","16:00","17:00"],
+    3: ["09:00","10:00","11:00","13:00","14:00","15:00","16:00","17:00"],
+    4: ["09:00","10:00","11:00","13:00","14:00","15:00","16:00","17:00"],
+    5: ["09:00","10:00","11:00","13:00","14:00","15:00","16:00","17:00"],
+    6: ["09:00","10:00","11:00","12:00","13:00"]
+  }
+};
+// =====================================
+
+const KEY = "priscilareis_agendamentos";
+const $ = id => document.getElementById(id);
+let escolhido = null;
+
+function carregar(){ try{ return JSON.parse(localStorage.getItem(KEY)) || []; }catch(e){ return []; } }
+function salvar(l){ try{ localStorage.setItem(KEY, JSON.stringify(l)); }catch(e){} }
+const brl = n => n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+const dataBR = iso => iso.split("-").reverse().join("/");
+function hoje(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); }
+function diaSemana(iso){ const [a,m,d]=iso.split("-").map(Number); return new Date(a,m-1,d).getDay(); }
+
+// Serviços
+$("servico").innerHTML = CONFIG.servicos.map((s,i)=>`<option value="${i}">${s.nome} (${brl(s.preco)})</option>`).join("");
+
+// Data
+$("data").min = hoje();
+$("data").value = hoje();
+$("data").addEventListener("change", desenharHorarios);
+
+function desenharHorarios(){
+  escolhido = null;
+  const data = $("data").value, box = $("slots");
+  $("dataHint").textContent = "";
+  if(!data){ box.innerHTML=""; return; }
+  const lista = CONFIG.horarios[diaSemana(data)] || [];
+  if(!lista.length){ box.innerHTML=""; $("dataHint").textContent="Fechado neste dia. Escolha outra data."; return; }
+  const ocupados = carregar().filter(a=>a.data===data).map(a=>a.hora);
+  const agora = new Date(), ehHoje = data===hoje();
+  box.innerHTML = "";
+  lista.forEach(h=>{
+    const b = document.createElement("button");
+    b.type="button"; b.className="slot"; b.textContent=h; b.setAttribute("aria-pressed","false");
+    const passou = ehHoje && (()=>{ const [hh,mm]=h.split(":").map(Number); return hh*60+mm <= agora.getHours()*60+agora.getMinutes(); })();
+    if(ocupados.includes(h) || passou) b.disabled = true;
+    b.onclick = ()=>{ escolhido=h; box.querySelectorAll(".slot").forEach(x=>x.setAttribute("aria-pressed", String(x===b))); };
+    box.appendChild(b);
+  });
+  if(!box.querySelector(".slot:not(:disabled)")) $("dataHint").textContent="Sem horários livres neste dia.";
+}
+
+// Enviar
+$("form").addEventListener("submit", e=>{
+  e.preventDefault();
+  const msg=$("msg"); msg.className="msg"; $("zap").hidden=true;
+  const nome=$("nome").value.trim(), tel=$("tel").value.trim(), data=$("data").value;
+  const s = CONFIG.servicos[$("servico").value];
+  if(!data || !escolhido){ msg.className="msg err"; msg.textContent="Escolha uma data e um horário."; return; }
+  if(nome.length<2){ msg.className="msg err"; msg.textContent="Informe seu nome."; return; }
+  if(tel.replace(/\D/g,"").length<10){ msg.className="msg err"; msg.textContent="Informe um telefone válido com DDD."; return; }
+  const lista = carregar();
+  if(lista.some(a=>a.data===data && a.hora===escolhido)){ msg.className="msg err"; msg.textContent="Esse horário acabou de ser ocupado. Escolha outro."; desenharHorarios(); return; }
+  lista.push({id:Date.now(), nome, tel, servico:s.nome, preco:s.preco, data, hora:escolhido});
+  salvar(lista);
+  const texto = `Olá! Quero agendar no Espaço Priscila Reis:\n${s.nome}\n${dataBR(data)} às ${escolhido}\nNome: ${nome}\nTelefone: ${tel}`;
+  $("zapLink").href = `https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(texto)}`;
+  $("zap").hidden = false;
+  msg.className="msg ok";
+  msg.textContent = `Agendado: ${s.nome}, ${dataBR(data)} às ${escolhido}. Envie o pedido pelo WhatsApp para a Priscila confirmar.`;
+  $("nome").value=""; $("tel").value=""; desenharHorarios();
+});
+
+// Área da Priscila
+function desenharLista(){
+  const l = carregar().sort((a,b)=>(a.data+a.hora).localeCompare(b.data+b.hora));
+  const el = $("lista");
+  if(!l.length){ el.innerHTML='<p class="hint">Nenhum agendamento ainda.</p>'; return; }
+  el.innerHTML = "";
+  l.forEach(a=>{
+    const d = document.createElement("div"); d.className="item";
+    const info = document.createElement("div");
+    const t = document.createElement("strong"); t.textContent = `${dataBR(a.data)} às ${a.hora}`;
+    const s = document.createElement("small"); s.textContent = `${a.nome} · ${a.servico} · ${a.tel}`;
+    info.append(t,s);
+    const acoes = document.createElement("div"); acoes.className="row";
+    const w = document.createElement("a"); w.className="btn alt sm"; w.target="_blank"; w.rel="noopener"; w.textContent="Avisar cliente";
+    w.href = `https://wa.me/55${a.tel.replace(/\D/g,"")}?text=${encodeURIComponent(`Olá, ${a.nome}! Seu horário (${a.servico}) está confirmado para ${dataBR(a.data)} às ${a.hora}. Espaço Priscila Reis.`)}`;
+    const c = document.createElement("button"); c.className="btn alt sm"; c.textContent="Cancelar";
+    c.onclick = ()=>{ if(confirm(`Cancelar o horário de ${a.nome}?`)){ salvar(carregar().filter(x=>x.id!==a.id)); desenharLista(); desenharHorarios(); } };
+    acoes.append(w,c); d.append(info,acoes); el.appendChild(d);
+  });
+}
+async function sha256(t){
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
+  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+// A área da Priscila só abre pelo endereço com #priscila no final e com a senha.
+async function checarAdmin(){
+  if(location.hash !== "#priscila"){ $("admin").hidden = true; $("cliente").hidden = false; return; }
+  const p = prompt("Senha da área da Priscila:");
+  let ok = false;
+  try{ ok = p !== null && await sha256(p) === CONFIG.pinHash; }catch(e){}
+  if(!ok){ if(p!==null) alert("Senha incorreta."); location.hash = ""; return; }
+  $("cliente").hidden = true; $("admin").hidden = false; desenharLista();
+}
+window.addEventListener("hashchange", checarAdmin);
+$("sair").onclick = ()=>{ location.hash = ""; };
+
+desenharHorarios();
+checarAdmin();
+</script>
+</body>
+</html>
